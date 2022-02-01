@@ -1,2 +1,2 @@
 # DPA
-DPA on given power traces
+differential power analysis and differential correlation analysis on given power traces
