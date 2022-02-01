@@ -3,34 +3,34 @@
 #include <string.h>
 #include <stdio.h>
 
+int writeFiles = 0; //write data to files for plotting
+
+
 AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsigned int max_measurements)
 {
     //read the plaintexts and store them in an array. later they will be inserted into the datastructure.
     int j = 0;
     int plaintext_array[max_measurements];
     FILE *plaintext = fopen(plaintext_file, "r");
-    if(plaintext == NULL)
-    {
+    if(plaintext == NULL){
         printf("failed to read plaintexts");
         return 0;
     }
     char *plain_line = malloc(10);
-    while(fgets(plain_line, 10, plaintext) != NULL)
-    {
+    while(fgets(plain_line, 10, plaintext) != NULL){
         unsigned int int_token = (unsigned int) strtol(plain_line, NULL, 16);
         plaintext_array[j++] = int_token;
     }
     free(plain_line);
     fclose(plaintext);
+    //load traces into the linked list
     int plaintext_counter = 0;
     AESChallenge *head;
     AESChallenge *previous;
-    for(int i = 1; i <= max_measurements; i++)
-    {
+    for(int i = 1; i <= max_measurements; i++){
         AESChallenge *current_challenge_pointer = (AESChallenge *)malloc(sizeof(AESChallenge));
-
         current_challenge_pointer->challenge = plaintext_array[plaintext_counter++];
-        //generate the filename of the trace file.
+        //generate the filename of the trace file. I hope there is a better way for it in C...
         char ten = (i%10) + '0';
         char hun = (i/10)%10 + '0';
         char tho = (i/100)%10 + '0';
@@ -78,7 +78,7 @@ AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsi
             printf("failed to open file %s\n", filename);
             return 0;
         }
-        int j = 0;
+        j = 0;
         char *line = malloc(15);
         char delimiter[] = " ";
         while(fgets(line, 15, trace) != NULL)
@@ -91,27 +91,19 @@ AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsi
             token = strtok(NULL, delimiter);
             double float_token = (double)atof(token);
             current_challenge_pointer->dPower[j++] = float_token;
-            //printf("dTime[%d]=%d;dPower[%d]=%f\n", j-1,current_challenge_pointer->dTime[j-1],j-1,current_challenge_pointer->dPower[j-1]);
         }
-        //printf("power[0]=%f\n", current_challenge_pointer->dPower[0]);
         free(line);
         free(filename);
         fclose(trace);
-        if(i > 1)
-        {
+        //set linked list pointers
+        if(i > 1){
             previous->next = current_challenge_pointer;
+        }else{
+            head = current_challenge_pointer;//save starting node of linked list
         }
-        else
-        {
-            head = current_challenge_pointer;
-        }
-        // if(i == max_measurements){
-        //     current_challenge_pointer->next = 0;
-        // }
         previous = current_challenge_pointer;
-        //printf("HEAD_1:power: %f\n", current_challenge_pointer->dPower[0]);
+        if(i==max_measurements)free(current_challenge_pointer);//free pointer at the end
     }
-    //printf("HEAD_2:power: %f\n", head->dPower[0]);
     return head;
 }
 
@@ -120,33 +112,29 @@ MeanAndVar* calculate_mean_var(const AESChallenge* challenge, const unsigned int
     MeanAndVar * mv = (MeanAndVar*)malloc(sizeof(MeanAndVar));
     AESChallenge * current_challenge = challenge;
     // calculate mean and variance here
-    for(; current_challenge->next != 0; current_challenge = current_challenge->next) //mean
-    {
-        for(int i = 0; i < 100; i++)
-        {
+    for(; current_challenge->next != 0; current_challenge = current_challenge->next){ //mean
+        for(int i = 0; i < 100; i++){//itereate through all points in time of each trace
             mv->dMean[i] += current_challenge->dPower[i]/max_measurements;
         }
     }
     //variance
     current_challenge = challenge;
-    for(; current_challenge->next != 0; current_challenge = current_challenge->next) //variance
-    {
-        for(int i = 0; i < 100; i++)
-        {
-            mv->dVar[i] += ((current_challenge->dPower[i] - mv->dMean[i])*(current_challenge->dPower[i] - mv->dMean[i]))/max_measurements;
+    for(; current_challenge->next != 0; current_challenge = current_challenge->next){ //variance
+        for(int i = 0; i < 100; i++){//itereate through all points in time of each trace
+            mv->dVar[i] += ((current_challenge->dPower[i] - mv->dMean[i])*(current_challenge->dPower[i] - mv->dMean[i]))/(max_measurements-1);
         }
     }
-    /*
-    FILE * meanFile = fopen("mean.txt", "w");
-    FILE * varFile = fopen("var.txt", "w");
-    if(varFile == NULL || meanFile == NULL)printf("failed to load files!");
-    for(int i = 0; i < 100; i++){
-        fprintf(meanFile, "%f\n", mv->dMean[i]);
-        fprintf(varFile, "%f\n", mv->dVar[i]);
+    if(writeFiles){//write mean and var to file. FILES MUST ALREADY EXIST IN ADVANCE!
+        FILE * meanFile = fopen("mean.txt", "w");
+        FILE * varFile = fopen("var.txt", "w");
+        if(varFile == NULL || meanFile == NULL)printf("failed to load mean.txt/var.txt files!");
+        for(int i = 0; i < 100; i++){//write each point in time of both traces
+            fprintf(meanFile, "%f\n", mv->dMean[i]);
+            fprintf(varFile, "%f\n", mv->dVar[i]);
+        }
+        fclose(meanFile);
+        fclose(varFile);
     }
-    fclose(meanFile);
-    fclose(varFile);
-    */
     return mv;
 }
 
@@ -191,21 +179,18 @@ unsigned char getSboxOut(unsigned char input, unsigned char key)
 
 
     // insert your code here
-    char sbox_in = input ^ key;
-    return Sbox[sbox_in];
+    unsigned char  sbox_in = input ^ key;// key add
+    return Sbox[sbox_in];//sbox
 }
 
 unsigned char getHW(unsigned char b)
 {
-    // insert your code here
-    unsigned char hw = 0;
-    for(int i = 0; i < 8; i++)
-    {
-        if(b%2!=0)
-        {
+    int hw = 0;
+    for(int i = 0; i < 8; i++){//iterate over all 8 bits
+        if(b & 1){//look at LSB
             hw += 1;
         }
-        b /= 2;
+        b >>= 1;
     }
     // return Hamming weight of B
     return hw;
@@ -214,75 +199,164 @@ unsigned char getHW(unsigned char b)
 
 unsigned char DiffOfMeans_attack(const AESChallenge* challenge,  const unsigned int max_measurements)
 {
-    // insert your code for the Difference of Means DPA here
-    AESChallenge * head;//copy challenge pointer
+    AESChallenge * current;//copy starting point of linked list
     char current_best_key = -1;
     double max_val_for_best_key = -1.0;
-    for(int key = 0; key < 256; key++)
-    {
-        head = challenge;//start at the head of the list
+    for(int key = 0; key < 256; key++){//iterate over all possible keys
+        current = challenge;//start at the head of the list
         AESChallenge* p1[max_measurements];
         AESChallenge* p2[max_measurements];
         int counterP1 = 0;
         int counterP2 = 0;
         //calculate HW and store the challenges in either p1 or p2
-        //while(head->next != 0){
-        for(; head->next != 0; head = head->next)
-        {
-            char b0 = getSboxOut((unsigned char)head->challenge, key);
+        for(; current->next != 0; current = current->next){
+            unsigned char b0 = getSboxOut((unsigned char)current->challenge, key);
             char hw = getHW(b0);
-            if(hw < 4)
-            {
-                p1[counterP1++] = head;
-            }
-            else
-            {
-                p2[counterP2++] = head;
+            if(hw < 4){
+                p1[counterP1++] = current;
+            }else{
+                p2[counterP2++] = current;
             }
         }
         //calculate the mean of the two sets
         //mean of p1
         double * meanP1 = malloc(sizeof(double) * 100);
         for(int i = 0; i < counterP1; i++) //iterate through P1
-        {
             for(int j = 0; j < 100; j++) //itereate through points on current trace
-            {
                 meanP1[j] += (p1[i]->dPower[j])/(counterP1);
-            }
-        }
+
         //mean of p2
         double * meanP2 = malloc(sizeof(double) * 100);
         for(int i = 0; i < counterP2; i++) //iterate through P2
-        {
             for(int j = 0; j < 100; j++) //itereate through points on current trace
-            {
                 meanP2[j] += (p2[i]->dPower[j])/(counterP2);
-            }
-        }
 
         //calculate the difference (absolut values) of the means and store them in P1.
         for(int i = 0; i < 100; i++)
-        {
-            //printf("meanP1[%i]=%f - meanP2[%d]=%f  =  %f\n",i,meanP1[i], i,meanP2[i],meanP1[i] - meanP2[i]);
-            meanP1[i] = meanP1[i] - meanP2[i];
-            if(meanP1[i] < 0)
-            {
-                meanP1[i] = -meanP1[i];
-            }
-        }
-        //find biggest difference and compare if its better than the max_val_for_best_key
+            meanP1[i] = meanP1[i] >= meanP2[i] ? meanP1[i] - meanP2[i] : meanP2[i] - meanP1[i];
+
+        //find biggest difference and compare whether its better than the max_val_for_best_key
         for(int i = 0; i < 100; i++)
-        {
-            if(meanP1[i] > max_val_for_best_key)
-            {
+            if(meanP1[i] > max_val_for_best_key){
                 max_val_for_best_key = meanP1[i];
                 current_best_key = key;
             }
-        }
 
+        if(writeFiles){//file must already exist in advance.
+            FILE * meanFile = fopen("diff_of_means.txt", "a");
+            if(meanFile == NULL)printf("failed to open diff_of_means file!");
+            for(int i = 0; i < 100; i++){
+                fprintf(meanFile, "%f ", meanP1[i]);
+            }
+            fprintf(meanFile, "\n");
+            fclose(meanFile);
+        }
+    }
+    return current_best_key;
+}
+
+//helper function to calculate the correlation of trace H_k and trace P
+double calcCor(char * H_k, double * P, double meanP, const unsigned int max_measurements){
+    //calculate mean of H_k
+    double meanH = 0;
+    for(int i = 0; i < max_measurements; i++){
+        meanH += H_k[i];
+    }
+    meanH /= max_measurements;
+
+    //calculate first sum
+    double s = 0;
+    for(int i = 0; i < max_measurements; i++){
+        s += H_k[i]*P[i];
+    }
+    double cov = s - ( meanP*meanH*max_measurements );
+
+    //calculate second sum
+    double var_p = 0;
+    for(int i = 0; i < max_measurements; i++){
+        var_p += (P[i]-meanP)*(P[i]-meanP);
     }
 
-    // return the most probabale key guess
+    //calculate third sum
+    double var_h = 0;
+    for(int i = 0; i < max_measurements; i++){
+        var_h += (H_k[i]-meanH)*(H_k[i]-meanH);
+    }
+
+    double den = sqrt(var_p*var_h);
+    double res = cov/den;
+    return res;
+}
+
+unsigned char correlation_attack(const AESChallenge* challenge, const MeanAndVar * MeanVarTrace,  const unsigned int max_measurements)
+{
+    AESChallenge * current;//copy challenge pointer
+    int current_best_key = -1;
+    double max_cor_for_best_key = -2.0;
+
+    for(int key = 0; key < 256; key++){
+        unsigned char H_k[max_measurements];
+        current = challenge;
+        for(int i = 0; i < max_measurements && current->next != 0; i++){
+            unsigned char sout = getSboxOut(current->challenge, key);
+            H_k[i] = getHW(sout);
+            current = current->next;
+        }
+
+        //calculate average HW as required for this task(PDF)
+        double avg = 0;
+        for(int i = 0; i < max_measurements; i++){
+            avg += H_k[i];
+        }
+        avg /= max_measurements;
+
+        //calc variance in HW as required for this task...
+        double var = 0;
+        for(int i = 0; i < max_measurements; i++){
+            var += (H_k[i]-avg)*(H_k[i]-avg);
+        }
+        var /= max_measurements;
+
+        if(writeFiles){
+            FILE * fm = fopen("HWMean.txt", "a");
+            FILE * fv = fopen("HWVar.txt", "a");
+            if(fm == NULL || fv == NULL)printf("failed to open HWMean or HWVar file!");
+            fprintf(fm, "%f\n", avg);
+            fprintf(fv, "%f\n", var);
+            fclose(fm);
+            fclose(fv);
+        }
+
+        double correlation[100];
+        for(int t = 0; t < 100; t++){//iterate over every point in time
+                double powerSamples[max_measurements];//samples of all traces at point t in time.
+                current = challenge;
+                for(int i = 0; i < max_measurements; i++){//iterate over every sample at point t
+                    powerSamples[i] = current->dPower[t];
+                    current = current->next;
+                }
+                //calculate the correlation for the samples for the point t of the correlation function for current key k
+                correlation[t] = calcCor(&H_k, &powerSamples, MeanVarTrace->dMean[t], max_measurements);
+        }
+        if(writeFiles){
+            FILE * corFile= fopen("correlations.txt", "a");
+            if(corFile == NULL)printf("failed to open correlations file!");
+            for(int i = 0; i < 100; i++){
+                fprintf(corFile, "%f ", correlation[i]);
+            }
+            fprintf(corFile, "\n");
+            fclose(corFile);
+        }
+
+        //get max correlation value of the correlation trace
+        for(int i = 0; i < 100; i++){
+            if(correlation[i] > max_cor_for_best_key){
+                max_cor_for_best_key = correlation[i];
+                current_best_key = key;
+            }
+
+        }
+    }
     return current_best_key;
 }
 
