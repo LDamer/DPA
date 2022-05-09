@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 
-int writeFiles = 0; //write data to files for plotting
+int writeFiles = 0; //To write data to files for plotting with a tool of choice
 
 
 AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsigned int max_measurements)
@@ -16,70 +16,32 @@ AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsi
         printf("failed to read plaintexts");
         return 0;
     }
-    char *plain_line = malloc(10);
+    char plain_line[10];
     while(fgets(plain_line, 10, plaintext) != NULL){
         unsigned int int_token = (unsigned int) strtol(plain_line, NULL, 16);
         plaintext_array[j++] = int_token;
     }
-    free(plain_line);
     fclose(plaintext);
     //load traces into the linked list
     int plaintext_counter = 0;
-    AESChallenge *head;
-    AESChallenge *previous;
+    AESChallenge *head, *previous, *current_challenge_pointer;
     for(int i = 1; i <= max_measurements; i++){
-        AESChallenge *current_challenge_pointer = (AESChallenge *)malloc(sizeof(AESChallenge));
+        current_challenge_pointer = (AESChallenge *)malloc(sizeof(AESChallenge));
         current_challenge_pointer->challenge = plaintext_array[plaintext_counter++];
-        //generate the filename of the trace file. I hope there is a better way for it in C...
-        char ten = (i%10) + '0';
-        char hun = (i/10)%10 + '0';
-        char tho = (i/100)%10 + '0';
-        char * filename;
-        if(tho != '0')
-        {
-            filename = malloc(12 + 3 + 4 + 1);
-            strcpy(filename, file);
-            filename[12] = tho;
-            filename[13] = hun;
-            filename[14] = ten;
-            filename[15] = '.';
-            filename[16] = 'd';
-            filename[17] = 'a';
-            filename[18] = 't';
-            filename[19] = '\0';
-        }
-        else if(hun != '0')
-        {
-            filename = malloc(12 + 2 + 4 + 1);
-            strcpy(filename, file);
-            filename[12] = hun;
-            filename[13] = ten;
-            filename[14] = '.';
-            filename[15] = 'd';
-            filename[16] = 'a';
-            filename[17] = 't';
-            filename[18] = '\0';
-        }
-        else
-        {
-            filename = malloc(12 + 1 + 4 + 1);
-            strcpy(filename, file);
-            filename[12] = ten;
-            filename[13] = '.';
-            filename[14] = 'd';
-            filename[15] = 'a';
-            filename[16] = 't';
-            filename[17] = '\0';
-        }
+
+        char filename[20];
+        sprintf(filename, "%s%d.dat", file, i);
+
         //Read in the traces
         FILE *trace = fopen(filename, "r");
         if(trace == NULL)
         {
             printf("failed to open file %s\n", filename);
-            return 0;
+            continue;
+            //return 0;
         }
         j = 0;
-        char *line = malloc(15);
+        char line[15];
         char delimiter[] = " ";
         while(fgets(line, 15, trace) != NULL)
         {
@@ -92,8 +54,6 @@ AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsi
             double float_token = (double)atof(token);
             current_challenge_pointer->dPower[j++] = float_token;
         }
-        free(line);
-        free(filename);
         fclose(trace);
         //set linked list pointers
         if(i > 1){
@@ -102,8 +62,8 @@ AESChallenge* scan_data(const char* file, const char* plaintext_file, const unsi
             head = current_challenge_pointer;//save starting node of linked list
         }
         previous = current_challenge_pointer;
-        if(i==max_measurements)free(current_challenge_pointer);//free pointer at the end
     }
+    free(current_challenge_pointer);
     return head;
 }
 
@@ -177,8 +137,6 @@ unsigned char getSboxOut(unsigned char input, unsigned char key)
         0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
     };
 
-
-    // insert your code here
     unsigned char  sbox_in = input ^ key;// key add
     return Sbox[sbox_in];//sbox
 }
@@ -192,7 +150,6 @@ unsigned char getHW(unsigned char b)
         }
         b >>= 1;
     }
-    // return Hamming weight of B
     return hw;
 }
 
@@ -242,7 +199,7 @@ unsigned char DiffOfMeans_attack(const AESChallenge* challenge,  const unsigned 
                 current_best_key = key;
             }
 
-        if(writeFiles){//file must already exist in advance.
+        if(writeFiles){
             FILE * meanFile = fopen("diff_of_means.txt", "a");
             if(meanFile == NULL)printf("failed to open diff_of_means file!");
             for(int i = 0; i < 100; i++){
@@ -252,6 +209,7 @@ unsigned char DiffOfMeans_attack(const AESChallenge* challenge,  const unsigned 
             fclose(meanFile);
         }
     }
+    // return the most probabale key guess
     return current_best_key;
 }
 
@@ -357,6 +315,7 @@ unsigned char correlation_attack(const AESChallenge* challenge, const MeanAndVar
 
         }
     }
+    // return the most probabale key guess
     return current_best_key;
 }
 
